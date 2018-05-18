@@ -193,7 +193,9 @@ class Model(dict, metaclass=ModelMetaclass):
         # 使用cls(** rs[0]) 构建出来一个user instance
         return cls(**rs[0])
 
-    # 为了执行例如这样 User.findNumber('name', where='id=?', args=[13,])
+    # 为了执行例如 User.findNumber('count(id)')
+    # Blog.findNumber('count(id)')
+    #  Comment.findNumber('count(id)')
     @classmethod
     async def findNumber(cls, selectField, where=None, args=None):
         # find number by select and where
