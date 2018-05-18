@@ -8,13 +8,14 @@ import os
 from aiohttp import web
 from jinja2 import Environment, FileSystemLoader
 from coroweb import add_static, add_routes
-from middlewares import logger_factory, data_factory, response_factory
+from middlewares import logger_factory, data_factory, response_factory, auth_factory
 
 logging.basicConfig(level=logging.INFO)
 
+
 def datetime_filter(t):
     # 定义时间差
-    delta = int(time.time()-t)
+    delta = int(time.time() - t)
     # 针对时间分类
     if delta < 60:
         return u"1分钟前"
@@ -28,6 +29,7 @@ def datetime_filter(t):
     # 超过 604800 秒，也就是7天前
     dt = datetime.fromtimestamp(t)
     return u"%s年%s月%s日" % (dt.year, dt.month, dt.day)
+
 
 # 选择jinja2作为模板, 初始化模板
 def init_jinja2(app, **kw):
@@ -58,11 +60,12 @@ def init_jinja2(app, **kw):
 # 这个 coroutine 的主要任务是完成 server 的启动工作
 async def init(loop):
     # 初始化 connection pool
-    await orm.create_pool(loop=loop, host='127.0.0.1', port=3306, user='www-data', password='www-data', database='awesome')
+    await orm.create_pool(loop=loop, host='127.0.0.1', port=3306, user='www-data', password='www-data',
+                          database='awesome')
 
     # 创建web应用,
     app = web.Application(loop=loop,
-                          middlewares=[logger_factory, data_factory, response_factory])
+                          middlewares=[logger_factory, data_factory, response_factory, auth_factory])
 
     init_jinja2(app, filters=dict(datetime=datetime_filter))
 

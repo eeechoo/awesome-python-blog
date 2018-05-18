@@ -5,7 +5,7 @@ import json
 import logging
 
 from aiohttp import web
-
+from handlers import cookie2user, COOKIE_NAME
 
 async def logger_factory(app, handler):
     async def logger(request):
@@ -58,6 +58,7 @@ async def response_factory(app, handler):
                 resp.content_type = 'application/json;charset=utf-8'
                 return resp
             else:
+                r['__user__'] = request.__user__
                 resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 resp.content_type = 'text/html;charset=utf-8'
                 return resp
@@ -77,3 +78,21 @@ async def response_factory(app, handler):
         return resp
 
     return response
+
+
+# --------------------------------------------   用户授权验证中间件   ---------------------------------------------
+async def auth_factory(app, handler):
+    async def auth(request):
+        logging.info('check user: %s %s' % (request.method, request.path))
+        request.__user__ = None
+        cookie_str = request.cookies.get(COOKIE_NAME)
+        if cookie_str:
+            user = await cookie2user(cookie_str)
+            if user:
+                logging.info('set current user: %s' % user.email)
+                request.__user__ = user
+        if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
+            return web.HTTPFound('/signin')
+        return await handler(request)
+
+    return auth
