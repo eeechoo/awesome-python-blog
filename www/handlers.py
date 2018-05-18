@@ -1,20 +1,65 @@
 import json, re, time, hashlib
 import logging
+import markdown2
 
 from aiohttp import web
 from config import configs
-from models import next_id, Blog, User
-from apis import APIValueError, APIError, APIPermissionError, Page
+from models import next_id, Blog, User, Comment
+from apis import APIValueError, APIError, APIPermissionError, APIResourceNotFoundError, Page
 from coroweb import get, post
 
-from www.apis import APIResourceNotFoundError
-from www.models import Comment
 
-
+# ============================================   首页与日志详情页   =============================================
 @get('/')
-async def index(request):
-    users = await User.findAll()
-    return 'hello index'
+async def index(*, page='1'):
+    page_index = get_page_index(page)
+    num = await Blog.findNumber('count(id)')
+    page = Page(num)
+    if num == 0:
+        blogs = []
+    else:
+        blogs = await Blog.findAll(orderBy='created_at desc', limit=(page.offset, page.limit))
+    return {
+        '__template__': 'blogs.html',
+        'page': page,
+        'blogs': blogs
+    }
+
+
+def text2html(text):
+    lines = map(lambda s: '<p>%s</p>' % s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'),
+                filter(lambda s: s.strip() != '', text.split('\n')))
+    return ''.join(lines)
+
+
+@get('/blog/{id}')
+async def get_blog(id):
+    blog = await Blog.find(id)
+    comments = await Comment.findAll('blog_id=?', [id], orderBy='created_at desc')
+    for c in comments:
+        c.html_content = text2html(c.content)
+    blog.html_content = markdown2.markdown(blog.content)
+    return {
+        '__template__': 'blog.html',
+        'blog': blog,
+        'comments': comments
+    }
+
+
+@post('/api/blogs/{id}/comments')
+async def api_create_comment(id, request, *, content):
+    user = request.__user__
+    if user is None:
+        raise APIPermissionError('Please signin first.')
+    if not content or not content.strip():
+        raise APIValueError('content')
+    blog = await Blog.find(id)
+    if blog is None:
+        raise APIResourceNotFoundError('Blog')
+    comment = Comment(blog_id=blog.id, user_id=user.id, user_name=user.name, user_image=user.image,
+                      content=content.strip())
+    await comment.save()
+    return comment
 
 
 # ============================================   用户注册、登陆、登出   =============================================
@@ -241,3 +286,25 @@ async def api_delete_comments(id, request):
         raise APIResourceNotFoundError('Comment')
     await c.remove()
     return dict(id=id)
+
+
+# ============================================   用户管理   =============================================
+@get('/manage/users')
+def manage_users(*, page='1'):
+    return {
+        '__template__': 'manage_users.html',
+        'page_index': get_page_index(page)
+    }
+
+
+@get('/api/users')
+async def api_get_users(*, page='1'):
+    page_index = get_page_index(page)
+    num = await User.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, users=())
+    users = await User.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    for u in users:
+        u.passwd = '******'
+    return dict(page=p, users=users)
